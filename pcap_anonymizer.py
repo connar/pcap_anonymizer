@@ -7,18 +7,19 @@ import random
 randomized_mac_addresses = {}
 randomized_ip_addresses = {}
 ip_port_pairs = {}
+non_localhost_ip = {}
 mac_port_pairs = {}
 
 def show_help():
     print("""
-Usage: python script.py --in_pcap <input_pcap_file> --out_pcap <output_pcap_file> [--whitelist <file>] [--modify_null_mac <yes|no>] [--modify_localhost <yes|no>]
+Usage: python script.py --inpcap <input_pcap_file> --outpcap <output_pcap_file> [--whitelist <file>] [--mod_null_mac <yes|no>] [--mod_localhost <yes|no>]
 
 Options:
-    --in_pcap            Input PCAP file to anonymize.
-    --out_pcap           Output PCAP file name for anonymized packets.
+    --inpcap            Input PCAP file to anonymize.
+    --outpcap           Output PCAP file name for anonymized packets.
     --whitelist  Optional file containing IP addresses to exclude from anonymization.
-    --modify_null_mac    Set to 'yes' to anonymize MAC address '00:00:00:00:00:00', 'no' to preserve it. Default: no.
-    --modify_localhost   Set to 'yes' to anonymize localhost IPs ('127.0.0.1'), 'no' to preserve them. Default: no.
+    --mod_null_mac    Set to 'yes' to anonymize MAC address '00:00:00:00:00:00', 'no' to preserve it. Default: no.
+    --mod_localhost   Set to 'yes' to anonymize localhost IPs ('127.0.0.1'), 'no' to preserve them. Default: no.
 """)
     sys.exit(1)
 
@@ -28,26 +29,26 @@ def parse_args():
         show_help()
 
     arg_dict = {
-        "in_pcap": None,
-        "out_pcap": None,
+        "inpcap": None,
+        "outpcap": None,
         "whitelist": None,
-        "modify_null_mac": "no",
-        "modify_localhost": "no"
+        "mod_null_mac": "no",
+        "mod_localhost": "no"
     }
 
     for i, arg in enumerate(args):
-        if arg == "--in_pcap":
-            arg_dict["in_pcap"] = args[i + 1]
-        elif arg == "--out_pcap":
-            arg_dict["out_pcap"] = args[i + 1]
+        if arg == "--inpcap":
+            arg_dict["inpcap"] = args[i + 1]
+        elif arg == "--outpcap":
+            arg_dict["outpcap"] = args[i + 1]
         elif arg == "--whitelist":
             arg_dict["whitelist"] = args[i + 1]
-        elif arg == "--modify_null_mac":
-            arg_dict["modify_null_mac"] = args[i + 1].lower()
-        elif arg == "--modify_localhost":
-            arg_dict["modify_localhost"] = args[i + 1].lower()
+        elif arg == "--mod_null_mac":
+            arg_dict["mod_null_mac"] = args[i + 1].lower()
+        elif arg == "--mod_localhost":
+            arg_dict["mod_localhost"] = args[i + 1].lower()
 
-    if not arg_dict["in_pcap"] or not arg_dict["out_pcap"]:
+    if not arg_dict["inpcap"] or not arg_dict["outpcap"]:
         show_help()
 
     return arg_dict
@@ -75,17 +76,23 @@ def get_anon_ip(ip):
 
     return randomized_ip
 
-def collect_ip_port_pairs(ip_address, srcport, modify_localhost):
-    if ip_address == "127.0.0.1" and modify_localhost == "no":
+def anonymize_ip_addresses(ip_address, srcport, modify_localhost):
+    if ip_address == "127.0.0.1" and mod_localhost == "no":
         return ip_address
+
+    if ip_address != "127.0.0.1":
+        if ip_address not in non_localhost_ip.keys():
+            non_localhost_ip[ip_address] = get_anon_ip(ip_address)
+        
+        return non_localhost_ip[ip_address]
 
     key = f"{ip_address}:{srcport}"
     if key not in ip_port_pairs:
         ip_port_pairs[key] = get_anon_ip(ip_address)
     return ip_port_pairs[key]
 
-def collect_mac_port_pairs(mac_address, srcport, modify_null_mac):
-    if mac_address == "00:00:00:00:00:00" and modify_null_mac == "no":
+def anonymize_mac_addresses(mac_address, srcport, modify_null_mac):
+    if mac_address == "00:00:00:00:00:00" and mod_null_mac == "no":
         return mac_address
 
     key = f"{mac_address}:{srcport}"
@@ -106,7 +113,7 @@ def main():
         with open(args["whitelist"], "r") as f:
             excluded_ips = set(line.strip() for line in f)
 
-    pkts = rdpcap(args["in_pcap"])
+    pkts = rdpcap(args["inpcap"])
     for p in pkts:
         if p.haslayer(TCP):
             tcp_layer = p[TCP]
@@ -116,18 +123,35 @@ def main():
         # Anonymize MAC Addresses
         if p.haslayer(Ether):
             src_mac, dst_mac, layer = get_src_dst(p, "Ether")
-            layer.src = collect_mac_port_pairs(src_mac, src_port, args["modify_null_mac"])
-            layer.dst = collect_mac_port_pairs(dst_mac, dst_port, args["modify_null_mac"])
+            layer.src = anonymize_mac_addresses(src_mac, src_port, args["mod_null_mac"])
+            layer.dst = anonymize_mac_addresses(dst_mac, dst_port, args["mod_null_mac"])
 
         # Anonymize IP Addresses
         if p.haslayer(IP):
             src_ip, dst_ip, layer = get_src_dst(p, "IP")
             if src_ip not in excluded_ips:
-                layer.src = collect_ip_port_pairs(src_ip, src_port, args["modify_localhost"])
+                layer.src = anonymize_ip_addresses(src_ip, src_port, args["mod_localhost"])
             if dst_ip not in excluded_ips:
-                layer.dst = collect_ip_port_pairs(dst_ip, dst_port, args["modify_localhost"])
+                layer.dst = anonymize_ip_addresses(dst_ip, dst_port, args["mod_localhost"])
 
-    wrpcap(args["out_pcap"], pkts)
+        if p.haslayer('ARP'):
+            arp_layer = p['ARP']
+
+            if hasattr(arp_layer, 'hwsrc'):
+                arp_layer.hwsrc = anonymize_mac_addresses(arp_layer.hwsrc, 0, args["mod_null_mac"])
+
+            if hasattr(arp_layer, 'hwdst'):
+                arp_layer.hwdst = anonymize_mac_addresses(arp_layer.hwdst, 0, args["mod_null_mac"])
+
+            if hasattr(arp_layer, 'psrc'):
+                if arp_layer.psrc not in excluded_ips:
+                    arp_layer.psrc = anonymize_ip_addresses(arp_layer.psrc, 0, args["mod_localhost"])
+
+            if hasattr(arp_layer, 'pdst'):
+                if arp_layer.pdst not in excluded_ips:
+                    arp_layer.pdst = anonymize_ip_addresses(arp_layer.pdst, 0, args["mod_localhost"])
+
+    wrpcap(args["outpcap"], pkts)
 
 if __name__ == '__main__':
     main()

@@ -17,9 +17,9 @@ Usage: python script.py --inpcap <input_pcap_file> --outpcap <output_pcap_file> 
 Options:
     --inpcap            Input PCAP file to anonymize.
     --outpcap           Output PCAP file name for anonymized packets.
-    --whitelist  Optional file containing IP addresses to exclude from anonymization.
-    --mod_null_mac    Set to 'yes' to anonymize MAC address '00:00:00:00:00:00', 'no' to preserve it. Default: no.
-    --mod_localhost   Set to 'yes' to anonymize localhost IPs ('127.0.0.1'), 'no' to preserve them. Default: no.
+    --whitelist         Optional file containing IP addresses to exclude from anonymization.
+    --mod_null_mac      Set to 'yes' to anonymize MAC address '00:00:00:00:00:00', 'no' to preserve it. Default: no.
+    --mod_localhost     Set to 'yes' to anonymize localhost IPs ('127.0.0.1'), 'no' to preserve them. Default: no.
 """)
     sys.exit(1)
 
@@ -77,7 +77,7 @@ def get_anon_ip(ip):
     return randomized_ip
 
 def anonymize_ip_addresses(ip_address, srcport, modify_localhost):
-    if ip_address == "127.0.0.1" and mod_localhost == "no":
+    if ip_address == "127.0.0.1" and modify_localhost == "no":
         return ip_address
 
     if ip_address != "127.0.0.1":
@@ -92,7 +92,7 @@ def anonymize_ip_addresses(ip_address, srcport, modify_localhost):
     return ip_port_pairs[key]
 
 def anonymize_mac_addresses(mac_address, srcport, modify_null_mac):
-    if mac_address == "00:00:00:00:00:00" and mod_null_mac == "no":
+    if mac_address == "00:00:00:00:00:00" and modify_null_mac == "no":
         return mac_address
 
     key = f"{mac_address}:{srcport}"

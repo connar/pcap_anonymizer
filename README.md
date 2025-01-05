@@ -47,5 +47,16 @@ Let's see the results:
 By now you would have a fully randomized pcap file looking completely real world, all by running just this script. Let's also see the case of anonymizing real world traffic.
 
 ## Overview - (2) Anonymizing real traffic
-For this purpose 
+For this purpose I visited the youtube website to generate actual traffic but also pinged my localhost to generate localhost traffic.  
+What i will do to further showcase the rest of the flags is:  
+- To set the ```mod_localhost``` flag to ```no``` (you can also just disregard it) to avoid changing the localhost traffic.
+- Save one of the real world IP addresses into a whitelist.txt in order to avoid changing it.
 
+These could be some of the cases where we want to preserve localhost traffic or some specific IP address.  
+
+Let's view the outcome:  
+
+![randomize_real](https://github.com/user-attachments/assets/fdafbaf4-25a6-4d58-873c-a7f7d4db1efe)
+
+# Future additions
+In the future I will try and also automate the modification of ```User-Agent``` as well as the ```Host``` inside a request.
